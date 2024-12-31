@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:ndef/ndef.dart' as ndef;
 import 'package:ndef/ndef.dart' show TypeNameFormat; // for generated file
+import 'package:ndef/utilities.dart';
 import 'package:json_annotation/json_annotation.dart';
 
 part 'flutter_nfc_kit.g.dart';
@@ -69,7 +68,7 @@ class NFCTag {
   /// The standard that the tag complies with (can be `unknown`)
   final String standard;
 
-  /// Tag ID
+  /// Tag ID (can be `unknown`)
   final String id;
 
   /// ATQA (Type A only, Android only)
@@ -160,7 +159,7 @@ class NDEFRawRecord {
   final String type;
 
   /// type name format (see [ndef](https://pub.dev/packages/ndef) package for detail)
-  final ndef.TypeNameFormat typeNameFormat;
+  final TypeNameFormat typeNameFormat;
 
   NDEFRawRecord(this.identifier, this.payload, this.type, this.typeNameFormat);
 
@@ -174,7 +173,7 @@ extension NDEFRecordConvert on ndef.NDEFRecord {
   /// Convert an [ndef.NDEFRecord] to encoded [NDEFRawRecord]
   NDEFRawRecord toRaw() {
     return NDEFRawRecord(id?.toHexString() ?? '', payload?.toHexString() ?? '',
-        type?.toHexString() ?? '', this.tnf);
+        type?.toHexString() ?? '', tnf);
   }
 
   /// Convert an [NDEFRawRecord] to decoded [ndef.NDEFRecord].
@@ -186,15 +185,111 @@ extension NDEFRecordConvert on ndef.NDEFRecord {
   }
 }
 
+/// Request flag for ISO 15693 Tags
+class Iso15693RequestFlags {
+  /// bit 1
+  bool dualSubCarriers;
+
+  /// bit 2
+  bool highDataRate;
+
+  /// bit 3
+  bool inventory;
+
+  /// bit 4
+  bool protocolExtension;
+
+  /// bit 5
+  bool select;
+
+  /// bit 6
+  bool address;
+
+  /// bit 7
+  bool option;
+
+  /// bit 8
+  bool commandSpecificBit8;
+
+  /// encode bits to one byte as specified in ISO15693-3
+  int encode() {
+    var result = 0;
+    if (dualSubCarriers) {
+      result |= 0x01;
+    }
+    if (highDataRate) {
+      result |= 0x02;
+    }
+    if (inventory) {
+      result |= 0x04;
+    }
+    if (protocolExtension) {
+      result |= 0x08;
+    }
+    if (select) {
+      result |= 0x10;
+    }
+    if (address) {
+      result |= 0x20;
+    }
+    if (option) {
+      result |= 0x40;
+    }
+    if (commandSpecificBit8) {
+      result |= 0x80;
+    }
+    return result;
+  }
+
+  Iso15693RequestFlags(
+      {this.dualSubCarriers = false,
+      this.highDataRate = false,
+      this.inventory = false,
+      this.protocolExtension = false,
+      this.select = false,
+      this.address = false,
+      this.option = false,
+      this.commandSpecificBit8 = false});
+
+  /// decode bits from one byte as specified in ISO15693-3
+  factory Iso15693RequestFlags.fromRaw(int r) {
+    assert(r >= 0 && r <= 0xFF, "raw flags must be in range [0, 255]");
+    var f = Iso15693RequestFlags(
+        dualSubCarriers: (r & 0x01) != 0,
+        highDataRate: (r & 0x02) != 0,
+        inventory: (r & 0x04) != 0,
+        protocolExtension: (r & 0x08) != 0,
+        select: (r & 0x10) != 0,
+        address: (r & 0x20) != 0,
+        option: (r & 0x40) != 0,
+        commandSpecificBit8: (r & 0x80) != 0);
+    return f;
+  }
+}
+
 /// Main class of NFC Kit
 class FlutterNfcKit {
   /// Default timeout for [transceive] (in milliseconds)
   static const int TRANSCEIVE_TIMEOUT = 5 * 1000;
 
   /// Default timeout for [poll] (in milliseconds)
-  static const int POLL_TIIMEOUT = 20 * 1000;
+  static const int POLL_TIMEOUT = 20 * 1000;
 
-  static const MethodChannel _channel = const MethodChannel('flutter_nfc_kit');
+  static const MethodChannel _channel = MethodChannel('flutter_nfc_kit/method');
+
+  static const EventChannel _tagEventChannel =
+      EventChannel('flutter_nfc_kit/event');
+
+  /// Stream of NFC tag events. Each event is a [NFCTag] object.
+  ///
+  /// This is only supported on Android.
+  /// On other platforms, this stream will always be empty.
+  static Stream<NFCTag> get tagStream {
+    return _tagEventChannel.receiveBroadcastStream().map((dynamic event) {
+      final Map<String, dynamic> json = jsonDecode(event as String);
+      return NFCTag.fromJson(json);
+    });
+  }
 
   /// get the availablility of NFC reader on this device
   static Future<NFCAvailability> get nfcAvailability async {
@@ -216,7 +311,7 @@ class FlutterNfcKit {
   /// On Android, set [androidPlatformSound] to control whether to play sound when a tag is polled,
   /// and set [androidCheckNDEF] to control whether check NDEF records on the tag.
   ///
-  /// The four boolean flags [readIso14443A], [readIso14443B], [readIso18092], [readIso15693] controls the NFC technology that would be tried.
+  /// The four boolean flags [readIso14443A], [readIso14443B], [readIso18092], [readIso15693] control the NFC technology that would be tried.
   /// On iOS, setting any of [readIso14443A] and [readIso14443B] will enable `iso14443` in `pollingOption`.
   ///
   /// On Web, all parameters are ignored except [timeout] and [probeWebUSBMagic].
@@ -224,10 +319,6 @@ class FlutterNfcKit {
   ///
   /// Note: Sometimes NDEF check [leads to error](https://github.com/nfcim/flutter_nfc_kit/issues/11), and disabling it might help.
   /// If disabled, you will not be able to use any NDEF-related methods in the current session.
-  ///
-  /// Caution: due to [bug in iOS CoreNFC](https://github.com/nfcim/flutter_nfc_kit/issues/23), [readIso18092] is disabled by default from 2.2.1.
-  /// If enabled, please ensure that `com.apple.developer.nfc.readersession.felica.systemcodes` is set in `Info.plist`,
-  /// or your NFC **WILL BE TOTALLY UNAVAILABLE BEFORE REBOOT**.
   static Future<NFCTag> poll({
     Duration? timeout,
     bool androidPlatformSound = true,
@@ -252,7 +343,7 @@ class FlutterNfcKit {
     if (!androidCheckNDEF) technologies |= 0x80;
     if (!androidPlatformSound) technologies |= 0x100;
     final String data = await _channel.invokeMethod('poll', {
-      'timeout': timeout?.inMilliseconds ?? POLL_TIIMEOUT,
+      'timeout': timeout?.inMilliseconds ?? POLL_TIMEOUT,
       'iosAlertMessage': iosAlertMessage,
       'iosMultipleTagMessage': iosMultipleTagMessage,
       'technologies': technologies,
@@ -260,6 +351,14 @@ class FlutterNfcKit {
     });
     return NFCTag.fromJson(jsonDecode(data));
   }
+
+  /// Works only on iOS.
+  ///
+  /// Calls `NFCTagReaderSession.restartPolling()`.
+  /// Call this if you have received "Tag connection lost" exception.
+  /// This will allow to reconnect to tag without closing system popup.
+  static Future<void> iosRestartPolling() async =>
+      await _channel.invokeMethod("restartPolling");
 
   /// Transceive data with the card / tag in the format of APDU (iso7816) or raw commands (other technologies).
   /// The [capdu] can be either of type Uint8List or hex string.
@@ -325,7 +424,7 @@ class FlutterNfcKit {
     return await _channel.invokeMethod('writeNDEF', {'data': data});
   }
 
-  /// Finish current session.
+  /// Finish current session in polling mode.
   ///
   /// You must invoke it before start a new session.
   ///
@@ -344,11 +443,11 @@ class FlutterNfcKit {
   }
 
   /// iOS only, change currently displayed NFC reader session alert message with [message].
-  /// 
+  ///
   /// There must be a valid session when invoking.
   /// On Android, call to this function does nothing.
   static Future<void> setIosAlertMessage(String message) async {
-    if (!kIsWeb && Platform.isIOS) {
+    if (!kIsWeb) {
       return await _channel.invokeMethod('setIosAlertMessage', message);
     }
   }
@@ -360,59 +459,68 @@ class FlutterNfcKit {
     return await _channel.invokeMethod('makeNdefReadOnly');
   }
 
-  /// Authenticate against a sector of MIFARE Classic tag.
-  /// 
+  /// Authenticate against a sector of MIFARE Classic tag (Android only).
+  ///
   /// Either one of [keyA] or [keyB] must be provided.
   /// If both are provided, [keyA] will be used.
   /// Returns whether authentication succeeds.
-  static Future<bool> authenticateSector<T>(
-    int index, {T? keyA, T? keyB}
-  ) async {
-    assert(T is String || T is Uint8List);
-    return await _channel.invokeMethod('authenticateSector', {
-      'index': index,
-      'keyA': keyA,
-      'keyB': keyB
-    });
+  static Future<bool> authenticateSector<T>(int index,
+      {T? keyA, T? keyB}) async {
+    assert((keyA is String || keyA is Uint8List) ||
+        (keyB is String || keyB is Uint8List));
+    return await _channel.invokeMethod(
+        'authenticateSector', {'index': index, 'keyA': keyA, 'keyB': keyB});
   }
 
-  /// Read one block (16 bytes) from tag
-  /// 
+  /// Read one unit of data (specified below) from:
+  /// * MIFARE Classic / Ultralight tag: one 16B block / page (Android only)
+  /// * ISO 15693 tag: one 4B block (iOS only)
+  ///
   /// There must be a valid session when invoking.
   /// [index] refers to the block / page index.
   /// For MIFARE Classic tags, you must first authenticate against the corresponding sector.
   /// For MIFARE Ultralight tags, four consecutive pages will be read.
   /// Returns data in [Uint8List].
-  static Future<Uint8List> readBlock(int index) async {
+  static Future<Uint8List> readBlock(int index,
+      {Iso15693RequestFlags? iso15693Flags,
+      bool iso15693ExtendedMode = false}) async {
+    var flags = iso15693Flags ?? Iso15693RequestFlags();
     return await _channel.invokeMethod('readBlock', {
-      'index': index
-    }); 
-  }
-
-  /// Write one block (16B) / page (4B) to MIFARE Classic / Ultralight tag
-  /// 
-  /// There must be a valid session when invoking.
-  /// [index] refers to the block / page index.
-  /// For MIFARE Classic tags, you must first authenticate against the corresponding sector.
-  static Future<void> writeBlock<T>(int index, T data) async {
-    assert(T is String || T is Uint8List);
-    await _channel.invokeMethod('writeBlock', {
       'index': index,
-      'data': data,
+      'iso15693Flags': flags.encode(),
+      'iso15693ExtendedMode': iso15693ExtendedMode,
     });
   }
 
-  /// Read one sector from MIFARE Classic tag
-  /// 
+  /// Write one unit of data (specified below) to:
+  /// * MIFARE Classic tag: one 16B block (Android only)
+  /// * MIFARE Ultralight tag: one 4B page (Android only)
+  /// * ISO 15693 tag: one 4B block (iOS only)
+  ///
+  /// There must be a valid session when invoking.
+  /// [index] refers to the block / page index.
+  /// For MIFARE Classic tags, you must first authenticate against the corresponding sector.
+  static Future<void> writeBlock<T>(int index, T data,
+      {Iso15693RequestFlags? iso15693Flags,
+      bool iso15693ExtendedMode = false}) async {
+    assert(data is String || data is Uint8List);
+    var flags = iso15693Flags ?? Iso15693RequestFlags();
+    await _channel.invokeMethod('writeBlock', {
+      'index': index,
+      'data': data,
+      'iso15693Flags': flags.encode(),
+      'iso15693ExtendedMode': iso15693ExtendedMode,
+    });
+  }
+
+  /// Read one sector from MIFARE Classic tag (Android Only)
+  ///
   /// There must be a valid session when invoking.
   /// [index] refers to the sector index.
   /// You must first authenticate against the corresponding sector.
   /// Note: not all sectors are 64B long, some tags might have 256B sectors.
   /// Returns data in [Uint8List].
   static Future<Uint8List> readSector(int index) async {
-    return await _channel.invokeMethod('readSector', {
-      'index': index
-    });
+    return await _channel.invokeMethod('readSector', {'index': index});
   }
-
 }

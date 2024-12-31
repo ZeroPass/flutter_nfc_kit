@@ -132,3 +132,64 @@
 ## 3.3.3
 
 * Fix build script of Android plugin and remove AGP version requirement (#110)
+
+## 3.4.0
+
+* Add support for reading / write MIFARE Classic / Ultralight tags on Android (merged #82, partially fixes #82)
+* Add support for reading / write ISO 15693 tags on iOS (merged #117, partially fixes #68)
+* Fix compiling issues (#123)
+* Other minor fixes (#114, #115)
+
+## 3.4.1
+
+**This version is *deprecated* due to a bug in Mifare tag handling. Please upgrade to 3.4.2.**
+
+* Fix & split examples to example/ dir
+* Publish examples to pub.dev
+* Support transceiving of raw ISO15693 commands on iOS
+
+## 3.4.2
+
+* Fix polling error on Mifare tags (#126, #128, #129, #133)
+
+## 3.5.0
+
+* Some FeliCa improvements by @shiwano:
+  * Fix missing `id` field in FeliCa card reading on iOS (#140)
+  * Set the IDm to the `id` and the PMm to the `manufacturer` on iOS (#140)
+* Add `iosRestartPolling` method by @rostopira (#151)
+* Fix type assertion in `authenticateSector` (fix #148)
+* Refine exception handling in Android plugin (fix #91 and #149)
+* Bump multiple dependencies:
+  * Android plugin / example app: Java 17, AGP 7.4.2, Kotlin 1.9.23, minSdkVersion 26 (fix #127, #144, #145)
+  * `js` library: 0.7.1
+
+## 3.5.1
+
+* Fix multiple issues related to `authenticateSector` (#159):
+  * Fix type checking assertions of arguments
+  * Add missing call to `connect` in Android plugin
+* Add instruction on resolving `js` dependency conflict in README
+
+## 3.5.2
+
+* Some MiFare Classic fixes by @knthm:
+  * allow authentication of sector 0 (#157)
+  * fix data type check in `writeBlock` (#161)
+
+## 3.6.0-rc.6
+
+This is a release candidate for 3.6.0. Please test it and report any issues.
+
+* Requires Dart 3.6+ and Flutter 3.24+
+* Remove annoying dependency on `js` library, replace with `dart:js_interop`
+* Remove dependency on `dart:io`
+* Contributions on Android plugin from @knthm:
+  * Dedicated handler thread for IO operations (#167)
+  * More elegant exception handling (#169)
+* Bump tool versions & dependencies of Android plugin and example app:
+  * Related issues / PRs: #179 #184, #186, #187
+  * Now requiring Java 17, Gradle 8.9, MinSDKVer 26, AGP 8.7, Kotlin 2.1.0
+* Add Swift package manager support for iOS plugin, bump dependencies
+* Fix WebUSB interop on Web, add onDisconnect callback
+* Add support for foreground polling on Android (#16, #179)

@@ -2,17 +2,16 @@ import 'package:flutter/material.dart';
 
 import 'package:ndef/ndef.dart' as ndef;
 
-class UriRecordSetting extends StatefulWidget {
+class NDEFUriRecordSetting extends StatefulWidget {
   final ndef.UriRecord record;
-  UriRecordSetting({Key? key, ndef.UriRecord? record})
-      : record = record ?? ndef.UriRecord(prefix: '', content: ''),
-        super(key: key);
+  NDEFUriRecordSetting({super.key, ndef.UriRecord? record})
+      : record = record ?? ndef.UriRecord(prefix: '', content: '');
   @override
-  _UriRecordSetting createState() => _UriRecordSetting();
+  State createState() => _NDEFUriRecordSetting();
 }
 
-class _UriRecordSetting extends State<UriRecordSetting> {
-  GlobalKey _formKey = new GlobalKey<FormState>();
+class _NDEFUriRecordSetting extends State<NDEFUriRecordSetting> {
+  final GlobalKey _formKey = GlobalKey<FormState>();
   late TextEditingController _contentController;
   String? _dropButtonValue;
 
@@ -20,7 +19,7 @@ class _UriRecordSetting extends State<UriRecordSetting> {
   initState() {
     super.initState();
 
-    _contentController = new TextEditingController.fromValue(
+    _contentController = TextEditingController.fromValue(
         TextEditingValue(text: widget.record.content!));
     _dropButtonValue = widget.record.prefix;
   }
@@ -49,7 +48,7 @@ class _UriRecordSetting extends State<UriRecordSetting> {
                               }).toList(),
                               onChanged: (value) {
                                 setState(() {
-                                  _dropButtonValue = value as String?;
+                                  _dropButtonValue = value;
                                 });
                               },
                             ),

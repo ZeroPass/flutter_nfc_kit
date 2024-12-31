@@ -7,10 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_nfc_kit/flutter_nfc_kit.dart';
 import 'package:logging/logging.dart';
 import 'package:ndef/ndef.dart' as ndef;
+import 'package:ndef/utilities.dart';
 
-import 'record-setting/raw_record_setting.dart';
-import 'record-setting/text_record_setting.dart';
-import 'record-setting/uri_record_setting.dart';
+import 'ndef_record/raw_record_setting.dart';
+import 'ndef_record/text_record_setting.dart';
+import 'ndef_record/uri_record_setting.dart';
 
 void main() {
   Logger.root.level = Level.ALL; // defaults to Level.INFO
@@ -22,7 +23,7 @@ void main() {
 
 class MyApp extends StatefulWidget {
   @override
-  _MyAppState createState() => _MyAppState();
+  State createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
@@ -42,14 +43,21 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    if (!kIsWeb)
+    if (!kIsWeb) {
       _platformVersion =
           '${Platform.operatingSystem} ${Platform.operatingSystemVersion}';
-    else
+    } else {
       _platformVersion = 'Web';
+    }
     initPlatformState();
-    _tabController = new TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _records = [];
+    FlutterNfcKit.tagStream.listen((tag) {
+      setState(() {
+        _tag = tag;
+        print(_tag);
+      });
+    });
   }
 
   // Platform messages are asynchronous, so we initialize in an async method.
@@ -85,7 +93,7 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
               ],
               controller: _tabController,
             )),
-        body: new TabBarView(controller: _tabController, children: <Widget>[
+        body: TabBarView(controller: _tabController, children: <Widget>[
           Scrollbar(
               child: SingleChildScrollView(
                   child: Center(
@@ -140,7 +148,7 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
                     }
 
                     // Pretend that we are working
-                    if (!kIsWeb) sleep(new Duration(seconds: 1));
+                    if (!kIsWeb) sleep(Duration(seconds: 1));
                     await FlutterNfcKit.finish(iosAlertMessage: "Finished!");
                   },
                   child: Text('Start polling'),
@@ -163,7 +171,7 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
                     children: <Widget>[
                       ElevatedButton(
                         onPressed: () async {
-                          if (_records!.length != 0) {
+                          if (_records!.isNotEmpty) {
                             try {
                               NFCTag tag = await FlutterNfcKit.poll();
                               setState(() {
@@ -213,7 +221,7 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
                                           final result = await Navigator.push(
                                               context, MaterialPageRoute(
                                                   builder: (context) {
-                                            return TextRecordSetting();
+                                            return NDEFTextRecordSetting();
                                           }));
                                           if (result != null) {
                                             if (result is ndef.TextRecord) {
@@ -231,7 +239,7 @@ class _MyAppState extends State<MyApp> with SingleTickerProviderStateMixin {
                                           final result = await Navigator.push(
                                               context, MaterialPageRoute(
                                                   builder: (context) {
-                                            return UriRecordSetting();
+                                            return NDEFUriRecordSetting();
                                           }));
                                           if (result != null) {
                                             if (result is ndef.UriRecord) {
